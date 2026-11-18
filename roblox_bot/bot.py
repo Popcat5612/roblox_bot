@@ -82,7 +82,7 @@ async def game_autocomplete(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
     current = current.strip()
-    if not current or bot.roblox_session is None:
+    if len(current) < 3 or bot.roblox_session is None:
         return []
 
     try:
@@ -258,7 +258,7 @@ async def user_autocomplete(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
     current = current.strip()
-    if not current or bot.roblox_session is None:
+    if len(current) < 3 or bot.roblox_session is None:
         return []
     try:
         users = await search_users(bot.roblox_session, current)
@@ -281,7 +281,7 @@ async def creator_autocomplete(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
     current = current.strip()
-    if not current or bot.roblox_session is None:
+    if len(current) < 3 or bot.roblox_session is None:
         return []
 
     user_results, group_results = await asyncio.gather(

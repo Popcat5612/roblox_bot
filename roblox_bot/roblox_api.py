@@ -1,4 +1,6 @@
+import asyncio
 import re
+from time import monotonic
 from typing import Any
 from urllib.parse import urlencode
 from uuid import uuid4
@@ -14,23 +16,76 @@ GROUPS_API = "https://groups.roblox.com/v1"
 GAMES_BY_USER_API = "https://games.roblox.com/v2/users"
 GAMES_BY_GROUP_API = "https://games.roblox.com/v2/groups"
 
+_REQUEST_INTERVAL_SECONDS = 0.35
+_RESPONSE_CACHE_TTL_SECONDS = 45
+_RESPONSE_CACHE_LIMIT = 512
+_response_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_request_lock = asyncio.Lock()
+_next_request_at = 0.0
+_rate_limited_until = 0.0
+
 
 class RobloxAPIError(Exception):
     """Raised when the public Roblox Games API cannot return usable data."""
 
 
 async def _get_json(session: aiohttp.ClientSession, url: str) -> dict[str, Any]:
+    global _next_request_at, _rate_limited_until
+
+    cache_key = re.sub(r"([?&]sessionId=)[^&]+", r"\1search-session", url)
+    now = monotonic()
+    cached = _response_cache.get(cache_key)
+    if cached and cached[0] > now:
+        return cached[1]
+
+    async with _request_lock:
+        while True:
+            now = monotonic()
+            cached = _response_cache.get(cache_key)
+            if cached and cached[0] > now:
+                return cached[1]
+            if _rate_limited_until > now:
+                wait_seconds = int(_rate_limited_until - now + 0.999)
+                raise RobloxAPIError(
+                    f"Roblox API가 잠시 요청을 제한 중이에요. 약 {wait_seconds}초 후 다시 시도해 주세요."
+                )
+            delay = _next_request_at - now
+            if delay <= 0:
+                _next_request_at = now + _REQUEST_INTERVAL_SECONDS
+                break
+            await asyncio.sleep(delay)
+
     try:
         async with session.get(url, headers={"Accept": "application/json"}) as response:
             if response.status == 429:
-                raise RobloxAPIError("Roblox API 요청이 많아요. 잠시 후 다시 시도해 주세요.")
+                retry_after = response.headers.get("Retry-After", "30")
+                try:
+                    cooldown = min(max(float(retry_after), 5.0), 60.0)
+                except ValueError:
+                    cooldown = 30.0
+                _rate_limited_until = max(
+                    _rate_limited_until, monotonic() + cooldown
+                )
+                raise RobloxAPIError(
+                    f"Roblox API가 요청을 제한 중이에요. 약 {int(cooldown)}초 후 다시 시도해 주세요."
+                )
             if response.status >= 400:
                 raise RobloxAPIError(f"Roblox API 요청 실패 (HTTP {response.status})")
-            return await response.json(content_type=None)
+            result = await response.json(content_type=None)
     except aiohttp.ClientError as error:
         raise RobloxAPIError("Roblox API에 연결하지 못했어요.") from error
     except TimeoutError as error:
         raise RobloxAPIError("Roblox API 응답 시간이 초과됐어요.") from error
+
+    now = monotonic()
+    if len(_response_cache) >= _RESPONSE_CACHE_LIMIT:
+        expired = [key for key, (expires_at, _) in _response_cache.items() if expires_at <= now]
+        for key in expired:
+            _response_cache.pop(key, None)
+        if len(_response_cache) >= _RESPONSE_CACHE_LIMIT:
+            _response_cache.pop(next(iter(_response_cache)))
+    _response_cache[cache_key] = (now + _RESPONSE_CACHE_TTL_SECONDS, result)
+    return result
 
 
 def is_valid_universe_id(value: str) -> bool:
