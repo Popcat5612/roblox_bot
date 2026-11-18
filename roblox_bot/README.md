@@ -36,7 +36,7 @@ Flask 상태 페이지도 로컬에서 함께 실행하려면 `python app.py`를
 
 ## Render 배포
 
-저장소를 GitHub에 올린 뒤 Render에서 **New → Web Service**를 선택하세요. 저장소 안에 이 코드가 `roblox_bot` 폴더로 들어 있다면 Root Directory는 `roblox_bot`으로 설정합니다. Build Command는 `pip install -r requirements.txt`, Start Command는 `python bot.py`입니다. Render 대시보드에 `DISCORD_TOKEN`과 `DATABASE_URL`을 입력하세요. `keep_alive.py`가 Render의 `PORT`에 Flask 상태 페이지를 열고 Discord 봇도 함께 실행합니다.
+저장소를 GitHub에 올린 뒤 Render에서 **New → Web Service**를 선택하세요. 저장소 안에 이 코드가 `roblox_bot` 폴더로 들어 있다면 Root Directory는 `roblox_bot`으로 설정합니다. Build Command는 `pip install -r requirements.txt`, Start Command는 `python bot.py`입니다. Render 대시보드에 `DISCORD_TOKEN`, `DATABASE_URL`, `PORT=8080`을 입력하세요. `keep_alive.py`가 Render의 `PORT`에 Flask 상태 페이지를 열고 Discord 봇도 함께 실행합니다.
 
 Flask 상태 페이지는 `/`와 `/healthz`에서 확인할 수 있습니다. Render의 Start Command는 `python bot.py`입니다.
 
