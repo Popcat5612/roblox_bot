@@ -1,14 +1,13 @@
 import asyncio
 import logging
 import os
-import sqlite3
 from datetime import datetime
-from pathlib import Path
 
 import aiohttp
 import discord
 from discord import app_commands
 from dotenv import load_dotenv
+from favorite_store import FavoriteStore
 
 from roblox_api import (
     RobloxAPIError,
@@ -47,28 +46,12 @@ class RobloxDiscordBot(discord.Client):
         super().__init__(intents=discord.Intents(guilds=True))
         self.tree = app_commands.CommandTree(self)
         self.roblox_session: aiohttp.ClientSession | None = None
-        self.favorite_db: sqlite3.Connection | None = None
+        self.favorite_db: FavoriteStore | None = None
 
     async def setup_hook(self) -> None:
         timeout = aiohttp.ClientTimeout(total=10)
         self.roblox_session = aiohttp.ClientSession(timeout=timeout)
-        db_path = os.getenv("FAVORITES_DB_PATH")
-        if db_path:
-            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        else:
-            db_path = str(Path(__file__).with_name("favorites.sqlite3"))
-        self.favorite_db = sqlite3.connect(db_path)
-        self.favorite_db.execute(
-            """CREATE TABLE IF NOT EXISTS favorites (
-                discord_user_id TEXT NOT NULL,
-                universe_id TEXT NOT NULL,
-                game_name TEXT NOT NULL,
-                root_place_id TEXT,
-                added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (discord_user_id, universe_id)
-            )"""
-        )
-        self.favorite_db.commit()
+        self.favorite_db = FavoriteStore()
 
         await self.tree.sync()
         logging.info("전역 슬래시 명령어를 등록했습니다.")
@@ -554,7 +537,7 @@ async def creator_command(interaction: discord.Interaction, creator: str) -> Non
 
 
 favorites = app_commands.Group(
-    name="favorites", description="내 Roblox 게임 즐겨찾기를 관리합니다"
+    name="favorites", description="Roblox 게임 즐겨찾기를 관리합니다"
 )
 
 
@@ -563,25 +546,17 @@ async def favorite_autocomplete(
 ) -> list[app_commands.Choice[str]]:
     if bot.favorite_db is None:
         return []
-    query = current.strip().casefold()
-    rows = bot.favorite_db.execute(
-        "SELECT universe_id, game_name FROM favorites WHERE discord_user_id = ? ORDER BY added_at DESC LIMIT 100",
-        (str(interaction.user.id),),
-    ).fetchall()
-    choices = []
-    for universe_id, game_name in rows:
-        if query and query not in str(game_name).casefold() and query not in str(universe_id):
-            continue
-        choices.append(
-            app_commands.Choice(name=str(game_name)[:100], value=str(universe_id))
-        )
-        if len(choices) == 25:
-            break
-    return choices
+    rows = bot.favorite_db.search_for_user(
+        str(interaction.user.id), current, limit=25
+    )
+    return [
+        app_commands.Choice(name=game_name[:100], value=universe_id)
+        for universe_id, game_name in rows
+    ]
 
 
 @favorites.command(name="add", description="게임을 즐겨찾기에 저장합니다")
-@app_commands.describe(game="저장할 게임 이름")
+@app_commands.describe(game="저장할 게임 이름 또는 Universe ID")
 @app_commands.autocomplete(game=game_autocomplete)
 async def favorites_add(interaction: discord.Interaction, game: str) -> None:
     await interaction.response.defer(ephemeral=True, thinking=True)
@@ -595,17 +570,13 @@ async def favorites_add(interaction: discord.Interaction, game: str) -> None:
         if not result:
             await interaction.edit_original_response(content="게임 정보를 찾지 못했어요.")
             return
-        cursor = bot.favorite_db.execute(
-            "INSERT OR IGNORE INTO favorites (discord_user_id, universe_id, game_name, root_place_id) VALUES (?, ?, ?, ?)",
-            (
-                str(interaction.user.id),
-                universe_id,
-                str(result.get("name") or "이름 없는 게임"),
-                str(result.get("rootPlaceId") or ""),
-            ),
+        added = bot.favorite_db.add(
+            str(interaction.user.id),
+            universe_id,
+            str(result.get("name") or "이름 없는 게임"),
+            str(result.get("rootPlaceId") or ""),
         )
-        bot.favorite_db.commit()
-        if cursor.rowcount:
+        if added:
             message = f"**{result.get('name', '게임')}**을(를) 즐겨찾기에 저장했어요."
         else:
             message = "이미 즐겨찾기에 저장된 게임이에요."
@@ -627,42 +598,49 @@ async def favorites_remove(interaction: discord.Interaction, game: str) -> None:
     if bot.favorite_db is None:
         await interaction.edit_original_response(content="즐겨찾기 저장소를 사용할 수 없어요.")
         return
+
     query = game.strip()
     if not query.isdigit():
-        row = bot.favorite_db.execute(
-            "SELECT universe_id FROM favorites WHERE discord_user_id = ? AND lower(game_name) = lower(?) LIMIT 1",
-            (str(interaction.user.id), query),
-        ).fetchone()
-        if not row:
-            await interaction.edit_original_response(content="즐겨찾기 목록에서 게임을 선택해 주세요.")
+        matches = bot.favorite_db.search_for_user(
+            str(interaction.user.id), query, limit=100
+        )
+        universe_id = next(
+            (uid for uid, name in matches if name.casefold() == query.casefold()),
+            None,
+        )
+        if universe_id is None:
+            await interaction.edit_original_response(
+                content="즐겨찾기 목록에서 삭제할 게임을 선택해 주세요."
+            )
             return
-        query = str(row[0])
-    cursor = bot.favorite_db.execute(
-        "DELETE FROM favorites WHERE discord_user_id = ? AND universe_id = ?",
-        (str(interaction.user.id), query),
+        query = universe_id
+
+    removed = bot.favorite_db.remove(str(interaction.user.id), query)
+    message = (
+        "즐겨찾기에서 삭제했어요."
+        if removed
+        else "저장된 게임을 찾지 못했어요."
     )
-    bot.favorite_db.commit()
-    message = "즐겨찾기에서 삭제했어요." if cursor.rowcount else "저장된 게임을 찾지 못했어요."
     await interaction.edit_original_response(content=message)
 
 
 @favorites.command(name="list", description="저장한 게임 목록을 보여줍니다")
 async def favorites_list(interaction: discord.Interaction) -> None:
     if bot.favorite_db is None:
-        await interaction.response.send_message("즐겨찾기 저장소를 사용할 수 없어요.", ephemeral=True)
+        await interaction.response.send_message(
+            "즐겨찾기 저장소를 사용할 수 없어요.", ephemeral=True
+        )
         return
-    rows = bot.favorite_db.execute(
-        "SELECT universe_id, game_name, root_place_id FROM favorites WHERE discord_user_id = ? ORDER BY added_at DESC LIMIT 25",
-        (str(interaction.user.id),),
-    ).fetchall()
+    rows = bot.favorite_db.list_for_user(str(interaction.user.id), limit=25)
     if not rows:
         await interaction.response.send_message(
             "즐겨찾기가 비어 있어요. `/favorites add`로 게임을 저장해 보세요.",
             ephemeral=True,
         )
         return
+
     lines = []
-    for index, (universe_id, game_name, place_id) in enumerate(rows, start=1):
+    for index, (_, game_name, place_id) in enumerate(rows, start=1):
         label = escape_markdown(game_name)
         if place_id:
             label = f"[{label}](https://www.roblox.com/games/{place_id})"
