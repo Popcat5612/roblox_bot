@@ -36,9 +36,9 @@ Flask 상태 페이지도 로컬에서 함께 실행하려면 `python app.py`를
 
 ## Render 배포
 
-저장소를 GitHub에 올린 뒤 Render에서 **New → Blueprint**를 선택하면 `render.yaml` 설정의 단일 웹 서비스가 Flask와 Discord 봇을 함께 시작합니다. Render 대시보드에 `DISCORD_TOKEN`을 입력하세요. Render는 Flask를 Gunicorn으로 실행하고 `/healthz`를 상태 확인에 사용합니다.
+저장소를 GitHub에 올린 뒤 Render에서 **New → Web Service**를 선택하세요. 저장소 안에 이 코드가 `roblox_bot` 폴더로 들어 있다면 Root Directory는 `roblox_bot`으로 설정합니다. Build Command는 `pip install -r requirements.txt`, Start Command는 `python bot.py`입니다. Render 대시보드에 `DISCORD_TOKEN`과 `DATABASE_URL`을 입력하세요. `keep_alive.py`가 Render의 `PORT`에 Flask 상태 페이지를 열고 Discord 봇도 함께 실행합니다.
 
-Flask 상태 페이지는 `/`에서 확인할 수 있습니다. Gunicorn은 봇의 중복 접속을 막기 위해 워커 1개로 설정되어 있습니다.
+Flask 상태 페이지는 `/`와 `/healthz`에서 확인할 수 있습니다. Render의 Start Command는 `python bot.py`입니다.
 
 Render의 기본 파일 시스템은 재배포·재시작 때 초기화될 수 있습니다. Neon에 `DATABASE_URL`을 연결하면 즐겨찾기를 외부 PostgreSQL 데이터베이스에 보관할 수 있습니다. Render 무료 웹 서비스는 요청이 없으면 15분 후 잠들 수 있습니다.
 

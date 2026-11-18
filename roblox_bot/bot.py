@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 from favorite_store import FavoriteStore
+from keep_alive import keep_alive
 
 from roblox_api import (
     RobloxAPIError,
@@ -666,4 +667,5 @@ def run_bot() -> None:
 
 
 if __name__ == "__main__":
+    keep_alive()
     run_bot()
