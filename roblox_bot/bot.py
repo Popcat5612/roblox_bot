@@ -37,7 +37,6 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = os.getenv("DISCORD_GUILD_ID", "").strip()
 
 if not TOKEN:
     raise RuntimeError(".env 파일에 DISCORD_TOKEN을 입력하세요.")
@@ -71,14 +70,8 @@ class RobloxDiscordBot(discord.Client):
         )
         self.favorite_db.commit()
 
-        if GUILD_ID:
-            guild = discord.Object(id=int(GUILD_ID))
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            logging.info("서버 %s에 슬래시 명령어를 등록했습니다.", GUILD_ID)
-        else:
-            await self.tree.sync()
-            logging.info("전역 슬래시 명령어를 등록했습니다.")
+        await self.tree.sync()
+        logging.info("전역 슬래시 명령어를 등록했습니다.")
 
     async def close(self) -> None:
         if self.roblox_session and not self.roblox_session.closed:

@@ -19,7 +19,7 @@ Python으로 만든 디스코드 봇입니다. Roblox 공개 Games API에서 게
 
 1. [Discord Developer Portal](https://discord.com/developers/applications)에서 새 Application을 만들고 **Bot**을 추가합니다.
 2. Bot 페이지에서 토큰을 복사합니다. 토큰은 비밀번호처럼 비공개로 보관하세요.
-3. `.env.example` 파일을 복사해 `.env`로 이름을 바꾸고 `DISCORD_TOKEN`을 입력합니다. 테스트 서버에서 명령어를 바로 확인하려면 `DISCORD_GUILD_ID`도 입력합니다.
+3. `.env.example` 파일을 복사해 `.env`로 이름을 바꾸고 `DISCORD_TOKEN`을 입력합니다.
 4. Developer Portal의 **OAuth2 → URL Generator**에서 `bot`과 `applications.commands` 범위를 선택하고, Bot Permissions에서 **Send Messages**와 **Embed Links**를 선택합니다. 생성된 초대 링크로 봇을 서버에 추가합니다.
 5. Python 3.10 이상을 설치하고 프로젝트 폴더에서 실행합니다.
 
@@ -30,17 +30,27 @@ python -m pip install -r requirements.txt
 python bot.py
 ```
 
-`DISCORD_GUILD_ID`를 설정하면 해당 서버에 명령어를 등록해 바로 시험할 수 있습니다. 비워 두면 전역 명령으로 등록되며, 디스코드에 표시되기까지 시간이 걸릴 수 있습니다. 봇을 계속 사용하려면 `python bot.py` 프로세스가 실행 중이어야 합니다.
+이 설정은 전역 슬래시 명령을 등록합니다. 처음 등록하거나 명령을 바꾼 뒤 디스코드에 반영되기까지 시간이 걸릴 수 있습니다. 봇을 계속 사용하려면 `python bot.py` 프로세스가 실행 중이어야 합니다.
 
 Flask 상태 페이지도 로컬에서 함께 실행하려면 `python app.py`를 사용하세요. 이 명령은 Flask와 Discord 봇을 함께 시작합니다.
 
 ## Render 배포
 
-저장소를 GitHub에 올린 뒤 Render에서 **New → Blueprint**를 선택하면 `render.yaml` 설정의 단일 웹 서비스가 Flask와 Discord 봇을 함께 시작합니다. `DISCORD_TOKEN`과 필요하면 `DISCORD_GUILD_ID` 환경 변수를 Render 대시보드에 입력하세요. Render는 Flask를 Gunicorn으로 실행하고 `/healthz`를 상태 확인에 사용합니다.
+저장소를 GitHub에 올린 뒤 Render에서 **New → Blueprint**를 선택하면 `render.yaml` 설정의 단일 웹 서비스가 Flask와 Discord 봇을 함께 시작합니다. Render 대시보드에 `DISCORD_TOKEN`을 입력하세요. Render는 Flask를 Gunicorn으로 실행하고 `/healthz`를 상태 확인에 사용합니다.
 
 Flask 상태 페이지는 `/`에서 확인할 수 있습니다. Gunicorn은 봇의 중복 접속을 막기 위해 워커 1개로 설정되어 있습니다.
 
 Render의 기본 파일 시스템은 재배포·재시작 때 초기화되므로 `favorites.sqlite3`의 즐겨찾기도 사라질 수 있습니다. 즐겨찾기를 유지하려면 유료 웹 서비스에 영구 디스크를 연결하고 `FAVORITES_DB_PATH=/var/data/favorites.sqlite3`로 설정하세요. 무료 웹 서비스는 요청이 없으면 15분 후 잠들 수 있어 봇 연결도 끊깁니다.
+
+### UptimeRobot 설정
+
+Render 배포가 끝나면 UptimeRobot에서 **Add New Monitor → HTTP(s)**를 선택하고 다음처럼 설정합니다.
+
+- Friendly Name: `Roblox Discord Bot`
+- URL: `https://<Render 서비스 이름>.onrender.com/healthz`
+- Monitoring Interval: 무료 플랜은 5분
+
+`/healthz`는 정상 상태에서 HTTP 200을 반환합니다. UptimeRobot이 이 주소를 주기적으로 요청하면 Render 서비스에 웹 요청이 들어옵니다. 무료 Render 서비스가 잠들었다가 깨어나는 동안 첫 확인이 실패로 표시될 수 있습니다.
 
 ## 참고 문서
 
